@@ -3,10 +3,11 @@ package controllers
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/EDLadder/Hats-For-Parties/config"
@@ -17,7 +18,10 @@ import (
 	"github.com/gorilla/mux"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/mongo/readconcern"
+	"go.mongodb.org/mongo-driver/mongo/readpref"
 )
 
 var client = db.Dbconnect()
@@ -94,62 +98,80 @@ var CreateParty = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) 
 		response.ErrorResponse("Limit of renting hats per party is "+strconv.Itoa(partyHatsLimit), w)
 		return
 	}
-
-	collectionParty := client.Database("party-hats").Collection("party")
-	collectionHats := client.Database("party-hats").Collection("hat")
-
-	// Get free hats
-	hatsOpts := options.Find().SetSort(bson.D{
-		{Key: "firstUse", Value: 1},
-	}).SetLimit(int64(party.Hats))
-
-	hatsFilter := bson.D{
-		{Key: "partyId", Value: bson.D{{Key: "$eq", Value: nil}}},
-		{Key: "canBeUseAfter", Value: bson.D{{Key: "$lt", Value: primitive.NewDateTimeFromTime(time.Now())}}},
+	// Use session
+	opts := options.Session().SetDefaultReadConcern(readconcern.Majority())
+	sess, err := client.StartSession(opts)
+	if err != nil {
+		log.Fatal(err)
 	}
+	defer sess.EndSession(context.TODO())
 
-	hatsCursor, _ := collectionHats.Find(context.TODO(), hatsFilter, hatsOpts)
+	txnOpts := options.Transaction().
+		SetReadPreference(readpref.SecondaryPreferred())
 
-	var freeHats []bson.M
-	hatsError := hatsCursor.All(context.TODO(), &freeHats)
+	sessionResult, err := sess.WithTransaction(
+		context.TODO(),
+		func(sessCtx mongo.SessionContext) (interface{}, error) {
+			collectionParty := client.Database("party-hats").Collection("party")
+			collectionHats := client.Database("party-hats").Collection("hat")
 
-	if hatsError != nil {
-		response.ServerErrResponse(hatsError.Error(), w)
-		return
-	}
-	if party.Hats > len(freeHats) {
-		response.ErrorResponse("They are only available "+strconv.Itoa(len(freeHats))+" hats", w)
-		return
-	}
+			hatsOpts := options.Find().SetSort(bson.D{
+				{Key: "firstUse", Value: 1},
+			}).SetLimit(int64(party.Hats))
 
-	// Start party
-	party.Status = "Started"
-	party.UpdatedAt = time.Now()
+			hatsFilter := bson.D{
+				{Key: "partyId", Value: bson.D{{Key: "$eq", Value: nil}}},
+				{Key: "canBeUseAfter", Value: bson.D{{Key: "$lt", Value: primitive.NewDateTimeFromTime(time.Now())}}},
+			}
 
-	result, err := collectionParty.InsertOne(context.TODO(), party)
+			// For test
+			// time.Sleep(4 * time.Second)
+
+			// Start party
+			party.Status = "Started"
+			party.UpdatedAt = time.Now()
+
+			result, err := collectionParty.InsertOne(context.TODO(), party)
+			if err != nil {
+				return nil, err
+			}
+
+			hatsCursor, _ := collectionHats.Find(context.TODO(), hatsFilter, hatsOpts)
+
+			var freeHats []bson.M
+			hatsError := hatsCursor.All(context.TODO(), &freeHats)
+
+			if hatsError != nil {
+				return nil, hatsError
+			}
+			if party.Hats > len(freeHats) {
+				return nil, errors.New("They are only available " + strconv.Itoa(len(freeHats)) + " hats")
+			}
+
+			for _, hat := range freeHats {
+				updateFilter := bson.D{primitive.E{Key: "_id", Value: hat["_id"]}}
+				updateData := bson.D{
+					primitive.E{Key: "$set", Value: bson.D{primitive.E{Key: "partyId", Value: result.InsertedID}}},
+				}
+
+				if hat["firstUse"] == nil {
+					updateData = append(updateData, primitive.E{Key: "$set", Value: bson.D{primitive.E{Key: "firstUse", Value: time.Now()}}})
+				}
+
+				collectionHats.UpdateOne(context.TODO(), updateFilter, updateData)
+			}
+
+			res, _ := json.Marshal(result.InsertedID)
+			return string(res), err
+		},
+		txnOpts)
 
 	if err != nil {
 		response.ServerErrResponse(err.Error(), w)
 		return
 	}
 
-	// Update hats party id
-	for _, hat := range freeHats {
-		updateFilter := bson.D{primitive.E{Key: "_id", Value: hat["_id"]}}
-		updateData := bson.D{
-			primitive.E{Key: "$set", Value: bson.D{primitive.E{Key: "partyId", Value: result.InsertedID}}},
-		}
-
-		if hat["firstUse"] == nil {
-			updateData = append(updateData, primitive.E{Key: "$set", Value: bson.D{primitive.E{Key: "firstUse", Value: time.Now()}}})
-		}
-
-		collectionHats.UpdateOne(context.TODO(), updateFilter, updateData)
-	}
-
-	// Return party ID
-	res, _ := json.Marshal(result.InsertedID)
-	response.SuccessResponse("{\"ID\": \""+strings.Replace(string(res), `"`, ``, 2)+"\"}", w)
+	response.SuccessResponse("{\"ID\": "+fmt.Sprintf("%v", sessionResult)+"}", w)
 })
 
 var StopParty = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
