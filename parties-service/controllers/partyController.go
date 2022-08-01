@@ -35,16 +35,7 @@ var GetParties = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response.ServerErrResponse(err.Error(), w)
 		return
 	}
-	for cursor.Next(context.TODO()) {
-		var party models.Party
-		err := cursor.Decode(&party)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		parties = append(parties, &party)
-	}
-	if err := cursor.Err(); err != nil {
+	if err = cursor.All(context.TODO(), &parties); err != nil {
 		response.ServerErrResponse(err.Error(), w)
 		return
 	}
