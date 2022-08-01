@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -39,8 +38,9 @@ var GetParties = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response.ServerErrResponse(err.Error(), w)
 		return
 	}
-	partiesString, _ := json.Marshal(parties)
-	responseValue := "{\"parties\":" + string(partiesString) + "}"
+	responseValue := map[string]interface{}{
+		"parties": parties,
+	}
 	response.SuccessResponse(responseValue, w)
 })
 
@@ -57,8 +57,9 @@ var GetHats = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response.ServerErrResponse(err.Error(), w)
 		return
 	}
-	hatsString, _ := json.Marshal(hats)
-	responseValue := "{\"hats\":" + string(hatsString) + "}"
+	responseValue := map[string]interface{}{
+		"hats": hats,
+	}
 	response.SuccessResponse(responseValue, w)
 })
 
@@ -152,8 +153,10 @@ var CreateParty = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) 
 		response.ServerErrResponse(err.Error(), w)
 		return
 	}
-
-	response.SuccessResponse("{\"ID\": "+fmt.Sprintf("%v", sessionResult)+"}", w)
+	responseValue := map[string]interface{}{
+		"ID": sessionResult,
+	}
+	response.SuccessResponse(responseValue, w)
 })
 
 var StopParty = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -193,6 +196,9 @@ var StopParty = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response.ErrorResponse("Party does not exist", w)
 		return
 	}
-	result := "{\"message\": \"Party stopped\"}"
-	response.SuccessResponse(result, w)
+
+	responseValue := map[string]interface{}{
+		"message": "Party stopped",
+	}
+	response.SuccessResponse(responseValue, w)
 })

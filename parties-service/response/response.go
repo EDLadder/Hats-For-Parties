@@ -5,32 +5,13 @@ import (
 	"net/http"
 )
 
-func SuccessResponse(msg string, writer http.ResponseWriter) {
+func SuccessResponse(msg map[string]interface{}, writer http.ResponseWriter) {
 	type errdata struct {
 		Statuscode int                    `json:"status"`
 		Message    map[string]interface{} `json:"msg"`
 	}
-	var jsonMap map[string]interface{}
-	json.Unmarshal([]byte(msg), &jsonMap)
 
-	temp := &errdata{Statuscode: 200, Message: jsonMap}
-
-	writer.Header().Set("Content-Type", "application/json")
-	writer.WriteHeader(http.StatusOK)
-	json.NewEncoder(writer).Encode(temp)
-}
-
-func SuccessArrRespond(fields []*interface{}, writer http.ResponseWriter) {
-	_, err := json.Marshal(fields)
-	type data struct {
-		Parties    []*interface{} `json:"data"`
-		Statuscode int            `json:"status"`
-		Message    string         `json:"msg"`
-	}
-	temp := &data{Parties: fields, Statuscode: 200, Message: "success"}
-	if err != nil {
-		ServerErrResponse(err.Error(), writer)
-	}
+	temp := &errdata{Statuscode: 200, Message: msg}
 
 	writer.Header().Set("Content-Type", "application/json")
 	writer.WriteHeader(http.StatusOK)
