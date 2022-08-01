@@ -53,16 +53,7 @@ var GetHats = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response.ServerErrResponse(err.Error(), w)
 		return
 	}
-	for cursor.Next(context.TODO()) {
-		var hat models.Hat
-		err := cursor.Decode(&hat)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		hats = append(hats, &hat)
-	}
-	if err := cursor.Err(); err != nil {
+	if err = cursor.All(context.TODO(), &hats); err != nil {
 		response.ServerErrResponse(err.Error(), w)
 		return
 	}
