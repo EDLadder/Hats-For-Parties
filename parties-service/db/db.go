@@ -13,21 +13,21 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-var client *mongo.Client
-
 func Dbconnect() *mongo.Client {
-	clientOptions := options.Client().ApplyURI(config.GetEnvVariable("MONGO_URL"))
+	mongoUrl, err := config.GetEnvVariable("MONGO_URL")
+	if err != nil {
+		log.Fatal("❌ Error fetching db url")
+	}
+	clientOptions := options.Client().ApplyURI(mongoUrl)
 	client, err := mongo.Connect(context.TODO(), clientOptions)
 
 	if err != nil {
 		log.Fatal("❌ Connection Failed to Database")
-		log.Fatal(err)
 	}
 
 	err = client.Ping(context.TODO(), nil)
 	if err != nil {
 		log.Fatal("❌ Connection Failed to Database")
-		log.Fatal(err)
 	}
 	color.Green("✅ Connected to Database")
 
@@ -37,15 +37,20 @@ func Dbconnect() *mongo.Client {
 	})
 
 	if hatsCount == 0 {
-		partyHatsCount, _ := strconv.Atoi(config.GetEnvVariable("HATS_COUNT"))
-		for i := 1; i <= partyHatsCount; i++ {
-			hatsCollection.InsertOne(context.TODO(), bson.D{
-				{Key: "name", Value: "Hat" + strconv.Itoa(i)},
-				{Key: "firstUse", Value: nil},
-				{Key: "createdAt", Value: time.Now()},
-				{Key: "canBeUseAfter", Value: time.Now()},
-				{Key: "partyId", Value: nil},
-			})
+		envHatsCount, err := config.GetEnvVariable("HATS_COUNT")
+		if err != nil {
+			color.Red("❌ Error fetching hats count")
+		} else {
+			partyHatsCount, _ := strconv.Atoi(envHatsCount)
+			for i := 1; i <= partyHatsCount; i++ {
+				hatsCollection.InsertOne(context.TODO(), bson.D{
+					{Key: "name", Value: "Hat" + strconv.Itoa(i)},
+					{Key: "firstUse", Value: nil},
+					{Key: "createdAt", Value: time.Now()},
+					{Key: "canBeUseAfter", Value: time.Now()},
+					{Key: "partyId", Value: nil},
+				})
+			}
 		}
 	}
 
