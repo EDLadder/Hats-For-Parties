@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -19,7 +18,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/mongo/readconcern"
-	"go.mongodb.org/mongo-driver/mongo/readpref"
+	"go.mongodb.org/mongo-driver/mongo/writeconcern"
 )
 
 func GetParties(client *mongo.Client) http.HandlerFunc {
@@ -33,6 +32,7 @@ func GetParties(client *mongo.Client) http.HandlerFunc {
 			return
 		}
 		if err = cursor.All(context.TODO(), &parties); err != nil {
+			println("Here")
 			response.ServerErrResponse(err.Error(), w)
 			return
 		}
@@ -64,6 +64,98 @@ func GetHats(client *mongo.Client) http.HandlerFunc {
 	}
 }
 
+// func CreateParty(client *mongo.Client) http.HandlerFunc {
+// 	return func(w http.ResponseWriter, r *http.Request) {
+// 		envMaxHats, err := config.GetEnvVariable("MAX_PARTY_HATS_COUNT")
+// 		if err != nil {
+// 			response.ErrorResponse(err.Error(), w)
+// 			return
+// 		}
+// 		partyHatsLimit, err := strconv.Atoi(envMaxHats)
+// 		if err != nil {
+// 			response.ErrorResponse(err.Error(), w)
+// 			return
+// 		}
+// 		var party models.Party
+// 		err = json.NewDecoder(r.Body).Decode(&party)
+// 		if err != nil {
+// 			response.ServerErrResponse(err.Error(), w)
+// 			return
+// 		}
+// 		if ok, err := validators.ValidateInputs(party); !ok {
+// 			response.ValidationResponse(err, w)
+// 			return
+// 		}
+// 		if party.Hats > partyHatsLimit {
+// 			response.ErrorResponse("Limit of renting hats per party is "+strconv.Itoa(partyHatsLimit), w)
+// 			return
+// 		}
+// 		party.Status = "Started"
+// 		party.UpdatedAt = time.Now()
+// 		responseValue := map[string]interface{}{
+// 			"id": "",
+// 		}
+// 		collectionParty := client.Database("party-hats").Collection("party")
+// 		collectionHats := client.Database("party-hats").Collection("hat")
+
+// 		err = client.UseSession(context.TODO(), func(sctx mongo.SessionContext) error {
+// 			// Create party
+// 			result, err := collectionParty.InsertOne(sctx, party)
+// 			if err != nil {
+// 				return err
+// 			}
+// 			responseValue["id"] = result.InsertedID
+// 			// Get free hats
+// 			hatsFilter := bson.D{
+// 				{Key: "partyId", Value: bson.D{{Key: "$eq", Value: nil}}},
+// 				{Key: "canBeUseAfter", Value: bson.D{{Key: "$lt", Value: primitive.NewDateTimeFromTime(time.Now())}}},
+// 			}
+// 			hatsOpts := options.Find().SetSort(bson.D{
+// 				{Key: "firstUse", Value: 1},
+// 			}).SetLimit(int64(party.Hats))
+
+// 			hatsCursor, err := collectionHats.Find(sctx, hatsFilter, hatsOpts)
+// 			if err != nil {
+// 				return err
+// 			}
+// 			var freeHats []bson.M
+// 			err = hatsCursor.All(sctx, &freeHats)
+// 			if err != nil {
+// 				return err
+// 			}
+// 			if party.Hats > len(freeHats) {
+// 				return errors.New("They are only available " + strconv.Itoa(len(freeHats)) + " hats")
+// 			}
+
+// 			// For test
+// 			time.Sleep(4 * time.Second)
+// 			// Update hats
+// 			for _, hat := range freeHats {
+// 				updateFilter := bson.D{primitive.E{Key: "_id", Value: hat["_id"]}}
+// 				updateData := bson.D{
+// 					primitive.E{Key: "$set", Value: bson.D{primitive.E{Key: "partyId", Value: result.InsertedID}}},
+// 				}
+
+// 				if hat["firstUse"] == nil {
+// 					updateData = append(updateData, primitive.E{Key: "$set", Value: bson.D{primitive.E{Key: "firstUse", Value: time.Now()}}})
+// 				}
+
+// 				_, err = collectionHats.UpdateOne(sctx, updateFilter, updateData)
+// 				if err != nil {
+// 					return err
+// 				}
+// 			}
+// 			return nil
+// 		})
+
+// 		if err != nil {
+// 			response.ServerErrResponse(err.Error(), w)
+// 			return
+// 		}
+// 		response.SuccessResponse(responseValue, w)
+// 	}
+// }
+
 func CreateParty(client *mongo.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		envMaxHats, err := config.GetEnvVariable("MAX_PARTY_HATS_COUNT")
@@ -77,107 +169,102 @@ func CreateParty(client *mongo.Client) http.HandlerFunc {
 			return
 		}
 		var party models.Party
-		decodeErr := json.NewDecoder(r.Body).Decode(&party)
-
-		if decodeErr != nil {
-			response.ServerErrResponse(decodeErr.Error(), w)
+		err = json.NewDecoder(r.Body).Decode(&party)
+		if err != nil {
+			response.ServerErrResponse(err.Error(), w)
 			return
 		}
-		if ok, validateErrors := validators.ValidateInputs(party); !ok {
-			response.ValidationResponse(validateErrors, w)
+		if ok, err := validators.ValidateInputs(party); !ok {
+			response.ValidationResponse(err, w)
 			return
 		}
 		if party.Hats > partyHatsLimit {
 			response.ErrorResponse("Limit of renting hats per party is "+strconv.Itoa(partyHatsLimit), w)
 			return
 		}
-		// Test
-
-		errTest := client.UseSession(context.TODO(), func(sc mongo.SessionContext) error {
-
-			return nil
-		})
-
-		if errTest != nil {
-			response.ServerErrResponse(errTest.Error(), w)
-			return
+		party.Status = "Started"
+		party.UpdatedAt = time.Now()
+		responseValue := map[string]interface{}{
+			"id": "",
 		}
+		collectionParty := client.Database("party-hats").Collection("party")
+		collectionHats := client.Database("party-hats").Collection("hat")
 
-		// End Test
-		// Use session
-		opts := options.Session().SetDefaultReadConcern(readconcern.Majority())
-		sess, err := client.StartSession(opts)
-		if err != nil {
-			log.Fatal(err)
-		}
-		defer sess.EndSession(context.TODO())
+		err = client.UseSession(context.TODO(), func(sctx mongo.SessionContext) error {
+			err := sctx.StartTransaction(options.Transaction().
+				SetReadConcern(readconcern.Snapshot()).
+				SetWriteConcern(writeconcern.New(writeconcern.WMajority())),
+			)
+			if err != nil {
+				return err
+			}
+			// Create party
+			result, err := collectionParty.InsertOne(sctx, party)
+			if err != nil {
+				sctx.AbortTransaction(sctx)
+				return err
+			}
+			// Get free hats
+			hatsFilter := bson.D{
+				{Key: "partyId", Value: bson.D{{Key: "$eq", Value: nil}}},
+				{Key: "canBeUseAfter", Value: bson.D{{Key: "$lt", Value: primitive.NewDateTimeFromTime(time.Now())}}},
+			}
+			hatsOpts := options.Find().SetSort(bson.D{
+				{Key: "firstUse", Value: 1},
+			}).SetLimit(int64(party.Hats))
 
-		txnOpts := options.Transaction().
-			SetReadPreference(readpref.SecondaryPreferred())
-
-		sessionResult, err := sess.WithTransaction(
-			context.TODO(),
-			func(sessCtx mongo.SessionContext) (interface{}, error) {
-				collectionParty := client.Database("party-hats").Collection("party")
-				collectionHats := client.Database("party-hats").Collection("hat")
-
-				hatsOpts := options.Find().SetSort(bson.D{
-					{Key: "firstUse", Value: 1},
-				}).SetLimit(int64(party.Hats))
-
-				hatsFilter := bson.D{
-					{Key: "partyId", Value: bson.D{{Key: "$eq", Value: nil}}},
-					{Key: "canBeUseAfter", Value: bson.D{{Key: "$lt", Value: primitive.NewDateTimeFromTime(time.Now())}}},
+			hatsCursor, err := collectionHats.Find(sctx, hatsFilter, hatsOpts)
+			if err != nil {
+				sctx.AbortTransaction(sctx)
+				return err
+			}
+			var freeHats []bson.M
+			err = hatsCursor.All(sctx, &freeHats)
+			if err != nil {
+				sctx.AbortTransaction(sctx)
+				return err
+			}
+			if party.Hats > len(freeHats) {
+				return errors.New("They are only available " + strconv.Itoa(len(freeHats)) + " hats")
+			}
+			// Update hats
+			for _, hat := range freeHats {
+				updateFilter := bson.D{primitive.E{Key: "_id", Value: hat["_id"]}}
+				updateData := bson.D{
+					primitive.E{Key: "$set", Value: bson.D{primitive.E{Key: "partyId", Value: result.InsertedID}}},
 				}
 
-				// For test
-				// time.Sleep(4 * time.Second)
+				if hat["firstUse"] == nil {
+					updateData = append(updateData, primitive.E{Key: "$set", Value: bson.D{primitive.E{Key: "firstUse", Value: time.Now()}}})
+				}
 
-				// Start party
-				party.Status = "Started"
-				party.UpdatedAt = time.Now()
-
-				result, err := collectionParty.InsertOne(context.TODO(), party)
+				_, err = collectionHats.UpdateOne(sctx, updateFilter, updateData)
 				if err != nil {
-					return nil, err
+					sctx.AbortTransaction(sctx)
+					return err
 				}
+			}
 
-				hatsCursor, _ := collectionHats.Find(context.TODO(), hatsFilter, hatsOpts)
-
-				var freeHats []bson.M
-				hatsError := hatsCursor.All(context.TODO(), &freeHats)
-
-				if hatsError != nil {
-					return nil, hatsError
-				}
-				if party.Hats > len(freeHats) {
-					return nil, errors.New("They are only available " + strconv.Itoa(len(freeHats)) + " hats")
-				}
-
-				for _, hat := range freeHats {
-					updateFilter := bson.D{primitive.E{Key: "_id", Value: hat["_id"]}}
-					updateData := bson.D{
-						primitive.E{Key: "$set", Value: bson.D{primitive.E{Key: "partyId", Value: result.InsertedID}}},
+			responseValue["id"] = result.InsertedID
+			for {
+				err = sctx.CommitTransaction(sctx)
+				switch e := err.(type) {
+				case nil:
+					return nil
+				case mongo.CommandError:
+					if e.HasErrorLabel("UnknownTransactionCommitResult") {
+						continue
 					}
-
-					if hat["firstUse"] == nil {
-						updateData = append(updateData, primitive.E{Key: "$set", Value: bson.D{primitive.E{Key: "firstUse", Value: time.Now()}}})
-					}
-
-					collectionHats.UpdateOne(context.TODO(), updateFilter, updateData)
+					return e
+				default:
+					return e
 				}
-
-				res, _ := json.Marshal(result.InsertedID)
-				return string(res), err
-			},
-			txnOpts)
+			}
+		})
 
 		if err != nil {
 			response.ServerErrResponse(err.Error(), w)
 			return
-		}
-		responseValue := map[string]interface{}{
-			"ID": sessionResult,
 		}
 		response.SuccessResponse(responseValue, w)
 	}

@@ -14,11 +14,11 @@ func ValidateInputs(dataSet interface{}) (bool, map[string][]string) {
 	err := validate.Struct(dataSet)
 
 	if err != nil {
-		if err, ok := err.(*validator.InvalidValidationError); ok {
-			panic(err)
-		}
-
 		errors := make(map[string][]string)
+		if err, ok := err.(*validator.InvalidValidationError); ok {
+			errors["panic"] = append(errors["panic"], err.Error())
+			return false, errors
+		}
 		reflected := reflect.ValueOf(dataSet)
 
 		for _, err := range err.(validator.ValidationErrors) {
