@@ -1,14 +1,14 @@
 package models
 
 import (
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	"time"
 )
 
 type Hat struct {
-	ID            primitive.ObjectID `json:"id,omitempty" bson:"_id,omitempty"`
-	Name          string             `json:"name" bson:"name" validate:"omitempty"`
-	FirstUseAt    primitive.DateTime `json:"firstUse" bson:"firstUse"`
-	CreatedAt     primitive.DateTime `json:"createdAt" bson:"createdAt"`
-	CanBeUseAfter primitive.DateTime `json:"canBeUseAfter" bson:"canBeUseAfter"`
-	ActivePartyID primitive.ObjectID `json:"partyId" bson:"partyId"`
+	ID            string    `json:"id,omitempty" bson:"_id,omitempty"`
+	Name          string    `json:"name" bson:"name" validate:"omitempty"`
+	FirstUseAt    time.Time `json:"firstUse" bson:"firstUse"`
+	CreatedAt     time.Time `json:"createdAt" bson:"createdAt"`
+	CanBeUseAfter time.Time `json:"canBeUseAfter" bson:"canBeUseAfter"`
+	ActivePartyID string    `json:"partyId" bson:"partyId"`
 }

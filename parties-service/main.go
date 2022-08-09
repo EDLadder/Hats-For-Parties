@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/EDLadder/Hats-For-Parties/config"
+	"github.com/EDLadder/Hats-For-Parties/db"
 	"github.com/EDLadder/Hats-For-Parties/logs"
 	"github.com/EDLadder/Hats-For-Parties/routes"
 	"github.com/fatih/color"
@@ -12,11 +13,16 @@ import (
 )
 
 func main() {
-	port := config.GetEnvVariable("PORT")
+	port, err := config.GetEnvVariable("PORT")
+	if err != nil {
+		color.Red("❌ Error fetching port from env. Using default: 8080")
+		port = "8080"
+	}
 	color.Cyan("🌏 Server running on localhost:" + port)
-
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
-	router := routes.Routes()
+
+	client := db.Dbconnect()
+	router := routes.Routes(client)
 
 	c := cors.New(cors.Options{
 		AllowedMethods: []string{"GET", "POST", "PATCH"},
